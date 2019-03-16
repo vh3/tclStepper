@@ -28,8 +28,7 @@ namespace eval ::tclStepper {
 		variable AngleCurrent    ;# the current location (degrees) of the motor
 		variable StepMode        ;# the mode that this stepper will use (half, full, ...)
 
-
-		#step a single motor
+		#step a single motor by a discrete set of steps
 		method step {stepcount} {
 
 			# variable stepcount
@@ -52,6 +51,7 @@ namespace eval ::tclStepper {
 					incr stepcount -1
 
 					# Wait an appropriate time before stepping again
+					after $StepTiming 
 
 			}
 
@@ -69,6 +69,7 @@ namespace eval ::tclStepper {
 
 			# Add motor configurations as we test new motors.  TODO: move this out to a configuration file that can be edited by users outside the package
 			# Todo: add the means to configure multiple step methods for a motor.
+			set motor_config(28BJY-48) [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 512.8 StepSignals {1000 0100 0010 0000} StepState 0]
 			set motor_config(28BJY-48A) [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0000} StepState 0]
 			foreach {i j} $motor_config($motor_type) {set $i $j}
 
@@ -120,7 +121,7 @@ proc ::tclStepper::angle {x y offset Y L} {
 
 	if {$x >= $offset} {
 
-	   puts "x ($x) >= offset ($offset)"
+	   # puts "x ($x) >= offset ($offset)"
 	   set D      [expr sqrt(($offset - $x) * ($offset - $x) + ($Y - $y) * ($Y - $y))]
 
 	   # set angle1 [expr $pi + atan(($offset - $x) / ($Y - $y)) + acos($D/(2 * $L))]; # clockwise from vertical
@@ -134,27 +135,26 @@ proc ::tclStepper::angle {x y offset Y L} {
 
 	} else {
 
-	   puts "x ($x) < offset ($offset)"
+	   # puts "x ($x) < offset ($offset)"
 
 	   set D      [expr sqrt(($x - $offset)*($x - $offset) + ($Y - $y) * ($Y - $y))]
-	   puts "D=$D"
-	   puts "D/2L = [expr $D / (2 * $L)]"
+	   # puts "D=$D"
+	   # puts "D/2L = [expr $D / (2 * $L)]"
 
 	   # set angle1 [expr $pi - atan(($x - $offset) / ($Y - $y)) + acos($D/(2 * $L))]
 	   #    angle1 = PI + acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
 	   set angle1 [expr $pi + acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))] ; # radians, clockwise from vertical
-	   puts "angle1 = $angle1"
+	   # puts "angle1 = $angle1"
 
 	   # set angle2 [expr $pi – atan(($x - $offset) / ($Y - $y)) – acos($D/(2 * $L))]
 	   #    angle2 = PI - acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
     	   set angle2 [expr $pi - acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))]
-	   puts "angle2 = $angle2"
+	   #   puts "angle2 = $angle2"
 	}
 
 	# Convert to degrees and return
 	return [list [expr $angle1 * $rad2deg ] [expr $angle2 * $rad2deg]]
 }
-
 
 # --------------------------------------------------------------------
 # USEFUL INFO FROM THE ARDUINO VERSION
@@ -202,10 +202,62 @@ proc step {} {
 	# 2. calculate the relative rotation required from the current rotation
 	# 3. calculate the relative speed of the two motors needed to finish at the same moment, accounting for accelleration.
 	# 4. loop through the steps.
-
 }
 
 
-# Example1 :Instantiate a 28BJY-48A motor
+# ----------------------------------------------------------------------
+# Scripts to time motor stepping as accurately as you can in tcl
+# scripts from: https://wiki.tcl-lang.org/page/sleep
+namespace eval delay {
+	variable _i
+	variable c/ms
 
+	proc calibrate {} {
+		variable c/ms
+		puts "calibrating clock clicks.."
+		set start [clock clicks]
+		after 1000
+		set end [clock clicks]
+		set c/ms [expr {($end-$start)/1000.0}]
+		puts "speed: [expr {${c/ms}*1000}] clicks per second"
+	}
 
+	calibrate
+
+	# busywaiting delay
+	proc delay-bw {sec} {
+		# set sec [expr $ms / 1000.0]
+		variable c/ms
+		set s [clock clicks]
+		while {[clock clicks] < $s+(${c/ms}*$sec)} {# do nothing}
+	}
+
+	# busywaiting "after idle" delay, using event loop
+	proc delay-ev {sec} {
+		# set sec [expr $ms / 1000.0]
+		variable c/ms
+		set s [clock clicks]
+		set e [expr {$s+$sec*${c/ms}}]
+		evwait ::delay::_i $e
+		vwait ::delay::_i
+		unset ::delay::_i
+	}
+
+	# worker for delay-ev
+	# continually reschedules itself via "after idle" until end time
+	proc evwait {var {end 0}} {
+		set ct [clock clicks]
+		if {$ct < $end} {
+			after idle [list ::delay::evwait $var $end]
+			return
+		} else {
+			set $var 0
+		}
+	}
+}
+
+# set time1 [time {::delay::delay-ev 2}]
+# puts "$time1"
+
+# set time2 [time {::delay::delay-bw 2}]
+# puts "$time2"
