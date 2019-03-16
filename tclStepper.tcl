@@ -10,33 +10,110 @@ package provide tclStepper 0.1.0
 
 namespace eval ::tclStepper {
 
-	oo::class create Stepper
-	# Also, oo::define CLASSNAME DEFINITIONSCRIPT
-	
-	oo::define Stepper {
+	# This class will will define the movement of a single motor.  Since a device may need to coordinate multiple motors, we will need another class later to assemble and coordinate motors.
+	# We can use threading as means to make both motors move in a relatively smooth, coordinated manner.
+	oo::class create Motor
+	oo::define Motor {
+
+		variable StepAbsolute    ;# the absolute count of steps from AngleStart we have moved since startup. This is a whole number of steps, and the most accurate method for avoiding additive errors over time?
+		variable GpioPins        ;# a list of GPIO pins that will be used for this motor.
 		variable CoilCount       ;# the number of wires that will use to drive the motor
-		variable Timing          ;# the number of milliseconds between steps
-		variable AngleStart      ;# the reference angle (degrees) where the motor started
+		variable StepTiming      ;# the number of milliseconds between steps
+		variable AngleStart      ;# the reference angle (degrees) where the motor started (the location of this motor's 'zero' angle.
+		variable StepPerRotation ;# the number of steps for a full rotation of the motor (4076, for 28BJY-48A, empirically)
+		variable StepSignals     ;# a list of pin activation sequences (each list element has a sequence of 0s or 1s for each coil state)
+		variable StepState       ;# where in the current sequence of predefined steps we are (starts at zero)
+
 		variable AngleTarget     ;# the reference angle (degrees) where intent to move the motor to
 		variable AngleCurrent    ;# the current location (degrees) of the motor
-		variable StepPerRotation ;# the number of steps for a full rotation of the motor (4076, for 28BJY-48A, empirically)
 		variable StepMode        ;# the mode that this stepper will use (half, full, ...)
-		variable StepModeSignals ;# the list of pins that 
-		variable GpioPins        ;# the ordered list of gpio pins that will be used by this motor
 
-		method step {} {
 
-		}	
+		#step a single motor
+		method step {stepcount} {
+
+			# variable stepcount
+
+			puts "inside proc step.  stepcount=$stepcount"
+
+			if {$stepcount > 0} {set dir "CW"} elseif {$stepcount < 0} {set dir "CCW"} else {return}
+			set stepcount [expr abs($stepcount)]
+
+			# count down the steps
+			while { $stepcount > 0 } {
+
+					# Send appropriate GPIO signals
+					# puts "stepcount = $stepcount"
+					if {$dir == "CW"} {incr StepState} else {incr StepState -1}
+
+					# figure out which signal to do next (from where we are)
+
+					# We have finished one step.  Count down the stepcounter by one.
+					incr stepcount -1
+
+					# Wait an appropriate time before stepping again
+
+			}
+
+			puts "current StepState = $StepState"
+
+		}
+	# End of method "step"
+
+
 	}
 
+	oo::define Motor {
+		constructor {gpio_list {motor_type "28BJY-48A"}} {
+			puts "Creating motor object"
+
+			# Add motor configurations as we test new motors.  TODO: move this out to a configuration file that can be edited by users outside the package
+			# Todo: add the means to configure multiple step methods for a motor.
+			set motor_config(28BJY-48A) [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0000} StepState 0]
+			foreach {i j} $motor_config($motor_type) {set $i $j}
+
+		}
+
+		destructor {
+			puts "Destroying motor object"
+		}
+	}
+
+	# Methods with lower case names are exported by default.  Export others if necessary
+	# oo::define Motor {export XXXXX}
+
+	# END OF CLASS DEFINITIONS FOR 'MOTOR'
+	# --------------------------------------------------------
+
+
+
+	# Create our class in the global namespace
+	# class create CLASSNAME DEFINITIONSCRIPT
+	
+	# Add some state and behaviour to this class
+	# oo::define CLASSNAME DEFINITIONSCRIPT
+	# Note: we are using mixed case for variables, lower case for methods
+
+}
+
+
 # calculations after https://www.instructables.com/id/CNC-Drawing-Arm/
-# diagrams at: https://cdn.instructables.com/F47/IOSI/J5K6TR3R/F47IOSIJ5K6TR3R.LARGE.jpg
+# see diagrams at: https://cdn.instructables.com/F47/IOSI/J5K6TR3R/F47IOSIJ5K6TR3R.LARGE.jpg
 # and https://cdn.instructables.com/FJH/PIIJ/J5K6TR1H/FJHPIIJJ5K6TR1H.LARGE.jpg
 
 # the actual calculations ported from: https://cdn.instructables.com/ORIG/FUD/XDBE/J6FDYDES/FUDXDBEJ6FDYDES.ino
 # They are not strictly identical to the calculations presented in the diagrams.  Get your Grade 12 Functions notes out!
 # returns a list of 2 angles in degrees, clockwise from the vertical.
-proc angle {x y offset Y L} {
+
+# Example usage
+# set x      209.99   ; # Cartesion coordinate of the destination point
+# set y      0.0   ; # Cartesian coordinate of the destination point
+# set offset 210.0 ; # The horizontal distance from the origin point (0,0) to the spindle mount of the arm, mm
+# set Y      465.0 ; # The vertical distance from the origina point(0,0) to the spindle mount of the arm, mm
+# set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
+# set result [::tclStepper::angle $x $y $offset $Y $L]
+# puts "Result is:$result"
+proc ::tclStepper::angle {x y offset Y L} {
 
 	set pi [expr acos(-1.0)]
 	set rad2deg [expr 180 / $pi]
@@ -45,7 +122,7 @@ proc angle {x y offset Y L} {
 
 	   puts "x ($x) >= offset ($offset)"
 	   set D      [expr sqrt(($offset - $x) * ($offset - $x) + ($Y - $y) * ($Y - $y))]
-	   
+
 	   # set angle1 [expr $pi + atan(($offset - $x) / ($Y - $y)) + acos($D/(2 * $L))]; # clockwise from vertical
 	   # angle1 = PI + acos(distance / (2 * LENGTH)) - atan((x - OFFSET) / (YAXIS - y)); //radians
 	   set angle1 [expr $pi + acos($D / (2 * $L)) - atan(($x - $offset) / ($Y - $y))] ; #radians, clockwise from vertical
@@ -72,27 +149,12 @@ proc angle {x y offset Y L} {
 	   #    angle2 = PI - acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
     	   set angle2 [expr $pi - acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))]
 	   puts "angle2 = $angle2"
+	}
 
-	} 
-	
 	# Convert to degrees and return
 	return [list [expr $angle1 * $rad2deg ] [expr $angle2 * $rad2deg]]
 }
 
-    # Core functions
-    namespace export 
-
-    # Helper functions
-    namespace export 
-}
-
-proc ::tclStepper::constructor {} {
-
-}
-
-proc ::tclStepper::destructor {} {
-
-}
 
 # --------------------------------------------------------------------
 # USEFUL INFO FROM THE ARDUINO VERSION
@@ -111,6 +173,8 @@ proc ::tclStepper::destructor {} {
 
 # Result is:219.19496742598292 140.80503257401708
 
+# -----------------------------------------------------
+
 # Test data
 # set x      209.99   ; # Cartesion coordinate of the destination point
 # set y      0.0   ; # Cartesian coordinate of the destination point
@@ -121,22 +185,27 @@ proc ::tclStepper::destructor {} {
 # puts "Result is:$result"
 
 # # Full Step (CW)
-# Orange   1 1000 
-# Yellow   2 0100
-# Pink     3 0010
-# Blue     4 0001
+# Orange   0 1000
+# Yellow   1 0100
+# Pink     2 0010
+# Blue     3 0001
 
 # Half Step2 (CW)
-# Orange 1 11000001
-# Yellow 2 01110000
-# Pink 3 00011100
-# Blue 4 00000111
+# Orange 0 11000001
+# Yellow 1 01110000
+# Pink   2 00011100
+# Blue   3 00000111
 
 proc step {} {
 
 	# 1. calculate the next location (x,y)> absolute angle
-	# 2. calculate the relative rotation required from the current rotation 
+	# 2. calculate the relative rotation required from the current rotation
 	# 3. calculate the relative speed of the two motors needed to finish at the same moment, accounting for accelleration.
 	# 4. loop through the steps.
 
 }
+
+
+# Example1 :Instantiate a 28BJY-48A motor
+
+
