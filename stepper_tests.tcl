@@ -2,7 +2,7 @@
 # A collection of development tests for the stepper scripts.
 # Intended for use on a raspberry pi
 #  3 Mar 2019, vh, first version
-# 16 Mar 2019, vh, added scripts for Motor object
+# 16 Mar 2019, vh, added scripts for Motor object, delay
 
 # Add the current folder to the current auto_path so that we can load this package
 # we assume that this package was retrieved with the command "git clone https://github.com/vh3/tclStepper.git"
@@ -12,12 +12,21 @@ set auto_path [append auto_path " [pwd]"]
 package require tclStepper
 
 # ----------------------------------------------------------------------
-# Test out the time-delay procedures.  
-set time1 [time {::delay::delay-ev 2}]
-puts "$time1"
+# Test out the time-delay procedures with a delay of 1ms
 
-set time2 [time {::delay::delay-bw 2}]
-puts "$time2"
+# set delay_time 1
+# Simple after+vwait. Calculate average time for 1000 attempts
+# set time0 [time {::tclStepper::delay $delay_time} 1000]
+# puts "$time0"
+
+# after-idle event loop method. Calculate average time for 1000 attempts
+# set time1 [time {::tclStepper::delay-ev $delay_time} 1000]
+# puts "$time1"
+
+# counting clock clicks in a while loop.  Calculate average time for 1000 attempts
+# This is the most accurate of the three methods on the Raspberry Pi.
+# set time2 [time {::tclStepper::delay-bw $delay_time} 1000]
+# puts "$time2"
 
 # ----------------------------------------------------------------------
 # Test out the angular calculations
@@ -31,13 +40,49 @@ set result [::tclStepper::angle $x $y $offset $Y $L]
 puts "(x,y)($x,$y) >> (angle1,angle2)([lindex $result 0],[lindex $result 1])"
 
 # ----------------------------------------------------------------------
-# set up a simple stepper motor
-set motor1 [::tclStepper::Motor new [list 10 11 12 13] "28BJY-48"]
+# set up a simple stepper motor and rotate a fixed number of steps
+set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48"]
 puts "motor1=$motor1"
 
 $motor1 step 10
 $motor1 step -4
 $motor1 step 12
+$motor1 rotate 360
+$motor1 rotate -360
+$motor1 rotate 0
 
 $motor1 destroy
 
+# ----------------------------------------------------------------------
+# Try out the GPIO functions
+puts "Writing to gpio pins"
+
+set port_list [list 18 23 17 22]
+# source gpio.tcl
+# package require tclGPIO
+
+# open the ports and set them as output
+foreach i $port_list {
+
+	catch {tclGPIO::open_port $i "out"} err
+	puts "port $i opened for writing"
+	# set the port value to zero, initially
+	tclGPIO::write_port $i 0
+	puts "port $i iniital value set to zero"
+}
+
+puts "ports opened for writing"
+
+# Turn them on
+foreach i $port_list {	
+	tclGPIO::write_port $i 1
+	tclStepper::delay 1000
+}
+# turn them off
+foreach i $port_list { 
+	tclGPIO::write_port $i 0
+	tclStepper::delay 1000
+}
+
+# Close the ports
+foreach i $port_list {tclGPIO::close_port $i}

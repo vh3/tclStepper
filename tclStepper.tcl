@@ -8,6 +8,9 @@
 package require Tcl 8.6
 package provide tclStepper 0.1.0
 
+source gpio.tcl
+package require tclGPIO
+
 namespace eval ::tclStepper {
 
 	# This class will will define the movement of a single motor.  Since a device may need to coordinate multiple motors, we will need another class later to assemble and coordinate motors.
@@ -51,16 +54,22 @@ namespace eval ::tclStepper {
 					incr stepcount -1
 
 					# Wait an appropriate time before stepping again
-					after $StepTiming 
-
+					after $StepTiming
 			}
 
 			puts "current StepState = $StepState"
 
-		}
-	# End of method "step"
+		}; # End of method "step"
 
+		method rotate {angle_deg} {
 
+			# Convert angles into steps
+			set stepcount [expr round($angle_deg / 360.0 * $StepPerRotation)]
+			my step $stepcount
+
+			return
+
+		}; # End of proc rotate
 	}
 
 	oo::define Motor {
@@ -69,34 +78,39 @@ namespace eval ::tclStepper {
 
 			# Add motor configurations as we test new motors.  TODO: move this out to a configuration file that can be edited by users outside the package
 			# Todo: add the means to configure multiple step methods for a motor.
-			set motor_config(28BJY-48) [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 512.8 StepSignals {1000 0100 0010 0000} StepState 0]
+			set motor_config(28BJY-48)  [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 512.8 StepSignals {1000 0100 0010 0000} StepState 0]
 			set motor_config(28BJY-48A) [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0000} StepState 0]
+			set GpioPins $gpio_list
 			foreach {i j} $motor_config($motor_type) {set $i $j}
 
+			# Setup the GPIO pins for this motor
+			puts "Initializing Gpio pins for this motor: $GpioPins"
+			foreach i $GpioPins {
+
+				# Initialize the pins to output
+				if {[catch {::tclGPIO::open_port $i "out"} err]} {puts $err}			
+				# Set the initial value to zero
+				if {[catch {::tclGPIO::write_port $i 0} err]} {puts $err}
+			}
 		}
 
 		destructor {
+
 			puts "Destroying motor object"
+			
+			# Set the values of the pins to zero, and close the ports to these pins
+			puts " Releasing motor pins: $GpioPins"
+			foreach i $GpioPins {
+
+				if {[catch {::tclGPIO::write_port $i 0} err]} {puts $err}
+				if {[catch {::tclGPIO::close_port $i} err]} {puts $err}
+			}
 		}
 	}
 
 	# Methods with lower case names are exported by default.  Export others if necessary
 	# oo::define Motor {export XXXXX}
-
-	# END OF CLASS DEFINITIONS FOR 'MOTOR'
-	# --------------------------------------------------------
-
-
-
-	# Create our class in the global namespace
-	# class create CLASSNAME DEFINITIONSCRIPT
-	
-	# Add some state and behaviour to this class
-	# oo::define CLASSNAME DEFINITIONSCRIPT
-	# Note: we are using mixed case for variables, lower case for methods
-
 }
-
 
 # calculations after https://www.instructables.com/id/CNC-Drawing-Arm/
 # see diagrams at: https://cdn.instructables.com/F47/IOSI/J5K6TR3R/F47IOSIJ5K6TR3R.LARGE.jpg
@@ -137,18 +151,16 @@ proc ::tclStepper::angle {x y offset Y L} {
 
 	   # puts "x ($x) < offset ($offset)"
 
-	   set D      [expr sqrt(($x - $offset)*($x - $offset) + ($Y - $y) * ($Y - $y))]
-	   # puts "D=$D"
-	   # puts "D/2L = [expr $D / (2 * $L)]"
+		set D      [expr sqrt(($x - $offset)*($x - $offset) + ($Y - $y) * ($Y - $y))]
+		# puts "D=$D"
+		# puts "D/2L = [expr $D / (2 * $L)]"
 
-	   # set angle1 [expr $pi - atan(($x - $offset) / ($Y - $y)) + acos($D/(2 * $L))]
-	   #    angle1 = PI + acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
-	   set angle1 [expr $pi + acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))] ; # radians, clockwise from vertical
-	   # puts "angle1 = $angle1"
+		#   angle1 = PI + acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
+		set angle1 [expr $pi + acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))] ; # radians, clockwise from vertical
+		# puts "angle1 = $angle1"
 
-	   # set angle2 [expr $pi – atan(($x - $offset) / ($Y - $y)) – acos($D/(2 * $L))]
-	   #    angle2 = PI - acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
-    	   set angle2 [expr $pi - acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))]
+		# angle2 = PI - acos(distance / (2 * LENGTH)) + atan((OFFSET - x) / (YAXIS - y)); //radians
+		set angle2 [expr $pi - acos($D / (2 * $L)) + atan(($offset - $x) / ($Y - $y))]
 	   #   puts "angle2 = $angle2"
 	}
 
@@ -204,11 +216,20 @@ proc step {} {
 	# 4. loop through the steps.
 }
 
+# ----------------------------------------------------------------------
+# HELPER FUNCTIONS FOR THE STEPPER PACKAGE - NOT PART OF OBJECTS
+# ----------------------------------------------------------------------
 
 # ----------------------------------------------------------------------
-# Scripts to time motor stepping as accurately as you can in tcl
-# scripts from: https://wiki.tcl-lang.org/page/sleep
-namespace eval delay {
+# Scripts to help improve motor stepping time intervals because all
+# timing activities are at the mercy the multi-tasking operating system.
+# These are good enough for our stepper motors.
+# after: https://wiki.tcl-lang.org/page/sleep
+# Usage:
+# ::tclStepper::delay <ms>     ;# simple delay used by every Tcl example on the web
+# ::tclStepper::delay-ev <ms>  ;# simple delay made by doing no work inside a loop
+# ::tclStepper::delay-bw <ms>  ;# an event-loop 
+namespace eval ::tclStepper:: {
 	variable _i
 	variable c/ms
 
@@ -221,6 +242,16 @@ namespace eval delay {
 		set c/ms [expr {($end-$start)/1000.0}]
 		puts "speed: [expr {${c/ms}*1000}] clicks per second"
 	}
+
+	# simplest delay example
+	proc delay {ms} {
+		global stop_flag
+		set stop_flag 0
+		after $ms {set stop_flag 1}
+		vwait stop_flag		
+	}
+
+	# TODO: Can we update the calibration function to test the other methods, then recalculate a new calibration measure that accounts for the behaviour of our favourite method?
 
 	calibrate
 
@@ -238,9 +269,9 @@ namespace eval delay {
 		variable c/ms
 		set s [clock clicks]
 		set e [expr {$s+$sec*${c/ms}}]
-		evwait ::delay::_i $e
-		vwait ::delay::_i
-		unset ::delay::_i
+		evwait ::tclStepper::_i $e
+		vwait ::tclStepper::_i
+		unset ::tclStepper::_i
 	}
 
 	# worker for delay-ev
@@ -248,16 +279,10 @@ namespace eval delay {
 	proc evwait {var {end 0}} {
 		set ct [clock clicks]
 		if {$ct < $end} {
-			after idle [list ::delay::evwait $var $end]
+			after idle [list ::tclStepper::evwait $var $end]
 			return
 		} else {
 			set $var 0
 		}
 	}
 }
-
-# set time1 [time {::delay::delay-ev 2}]
-# puts "$time1"
-
-# set time2 [time {::delay::delay-bw 2}]
-# puts "$time2"
