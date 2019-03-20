@@ -18,23 +18,45 @@ namespace eval ::tclStepper {
 	oo::class create Motor
 	oo::define Motor {
 
-		variable StepAbsolute    ;# the absolute count of steps from AngleStart we have moved since startup. This is a whole number of steps, and the most accurate method for avoiding additive errors over time?
 		variable GpioPins        ;# a list of GPIO pins that will be used for this motor.
 		variable CoilCount       ;# the number of wires that will use to drive the motor
 		variable StepTiming      ;# the number of milliseconds between steps
 		variable AngleStart      ;# the reference angle (degrees) where the motor started (the location of this motor's 'zero' angle.
 		variable StepPerRotation ;# the number of steps for a full rotation of the motor (4076, for 28BJY-48A, empirically)
 		variable StepSignals     ;# a list of pin activation sequences (each list element has a sequence of 0s or 1s for each coil state)
-		variable StepState       ;# where in the current sequence of predefined steps we are (starts at zero)
+		variable StepState       ;# what is the net sum of steps we have taken since motor initialization.
+		variable StepCycleState  ;# where in the current of stepper driver sequences we are located. (starts at zero)
+		variable Reference       ;# A web link to datasheet or refernece material used to create the motor parameters
 
 		variable AngleTarget     ;# the reference angle (degrees) where intent to move the motor to
 		variable AngleCurrent    ;# the current location (degrees) of the motor
 		variable StepMode        ;# the mode that this stepper will use (half, full, ...)
 
+		# A method to move a single step CW or CCW and update all the related state variables
+		method onestep {{direction "CW"}} {
+			
+			if {$direction == "CW"} {set incr_value 1} else {set incr_value -1}
+
+			# update the StepState
+			incr StepState $incr_value
+			
+			# update the StepCycleState
+			incr StepCycleState $incr_value
+			set StepCycleState [expr $StepCycleState % [llength $StepSignals]]
+
+			# Find the appropriate sequence we need to activate
+			set seq [lindex $StepSignals $StepCycleState]
+			#puts "sequence: $StepCycleState, LED states: $seq"
+
+			# Turn on the appropriate pins (we can't do it all simultaneously here.  Does the order matter?  TODO: experiment with order and correct for rotation direction if we discover it matters
+			for {set i 0} {$i < $CoilCount} {incr i} {
+				::tclGPIO::write_port [lindex $GpioPins $i] [string index $seq $i]
+			}
+
+		}; #end of method onestep
+
 		#step a single motor by a discrete set of steps
 		method step {stepcount} {
-
-			# variable stepcount
 
 			puts "inside proc step.  stepcount=$stepcount"
 
@@ -46,7 +68,10 @@ namespace eval ::tclStepper {
 
 					# Send appropriate GPIO signals
 					# puts "stepcount = $stepcount"
-					if {$dir == "CW"} {incr StepState} else {incr StepState -1}
+					# if {$dir == "CW"} {incr StepState} else {incr StepState -1}
+					my onestep $dir
+					
+					::tclStepper::delay-bw $StepTiming
 
 					# figure out which signal to do next (from where we are)
 
@@ -58,9 +83,11 @@ namespace eval ::tclStepper {
 			}
 
 			puts "current StepState = $StepState"
+			return
 
 		}; # End of method "step"
 
+		#  rotate by a specific number of degrees
 		method rotate {angle_deg} {
 
 			# Convert angles into steps
@@ -70,6 +97,38 @@ namespace eval ::tclStepper {
 			return
 
 		}; # End of proc rotate
+
+		# Rotate to an absolute orientation angle
+		method rotateto {angle_deg} {
+
+				# Calculate the current angle of orientation
+				puts "StepState=$StepState, StepPerRotation=$StepPerRotation, AngleStart=$AngleStart, Target Angle=$angle_deg"
+
+				set current_angle [expr 360.0 * ($StepState % round($StepPerRotation)) / $StepPerRotation + $AngleStart]
+				# set current_angle [expr 360.0 * $StepState / $StepPerRotation ]
+				# set current_angle [expr 360.0 * (($StepState % $StepPerRotation) / $StepPerRotation) + $AngleStart]
+				puts "current_angle=$current_angle"
+
+				# set current_angle [expr  $current_angle % 360]
+
+				# Currently, do not cross "zero degrees" to move between angles.
+				# TODO: Calculate the shortest rotation to get to this angle.  Account for known areas to which the motor may not rotate due to obstructions
+				if {$angle_deg <= $current_angle} {
+
+					set rotate_angle [expr $angle_deg - $current_angle] 
+					
+				} else {
+
+					set rotate_angle [expr $angle_deg - $current_angle]
+				}
+				
+				puts "Current_angle=$current_angle.  Rotating $rotate_angle degrees to get to $angle_deg"
+				my rotate $rotate_angle
+				
+				return
+			
+		}; # End of proc rotateto
+		
 	}
 
 	oo::define Motor {
@@ -77,9 +136,11 @@ namespace eval ::tclStepper {
 			puts "Creating motor object"
 
 			# Add motor configurations as we test new motors.  TODO: move this out to a configuration file that can be edited by users outside the package
-			# Todo: add the means to configure multiple step methods for a motor.
-			set motor_config(28BJY-48)  [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 512.8 StepSignals {1000 0100 0010 0000} StepState 0]
-			set motor_config(28BJY-48A) [list StepAbsolute 0 Coilcount 4 StepTiming 2 Anglestart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0000} StepState 0]
+			# Todo: add the means to configure multiple step methods for a moto180
+			set motor_config(28BJY-48)      [list CoilCount 4 StepTiming 10 AngleStart 0 StepPerRotation 513  StepSignals {1000 0100 0010 0001} StepState 0 Reference "https://42bots.com/tutorials/28byj-48-stepper-motor-with-uln2003-driver-and-arduino-uno/"]
+			set motor_config(28BJY-48_half) [list CoilCount 4 StepTiming 10 AngleStart 0 StepPerRotation 1026 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
+			set motor_config(28BJY-48A)     [list CoilCount 4 StepTiming 10 AngleStart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0001} StepState 0]
+
 			set GpioPins $gpio_list
 			foreach {i j} $motor_config($motor_type) {set $i $j}
 
@@ -92,11 +153,18 @@ namespace eval ::tclStepper {
 				# Set the initial value to zero
 				if {[catch {::tclGPIO::write_port $i 0} err]} {puts $err}
 			}
+			
+			# Attempt one step forward, then back.
+			my step 1
+			my step -1
 		}
 
 		destructor {
 
 			puts "Destroying motor object"
+			
+			# Return the motor to it's starting position.
+			my rotateto $AngleStart
 			
 			# Set the values of the pins to zero, and close the ports to these pins
 			puts " Releasing motor pins: $GpioPins"
@@ -208,13 +276,6 @@ proc ::tclStepper::angle {x y offset Y L} {
 # Pink   2 00011100
 # Blue   3 00000111
 
-proc step {} {
-
-	# 1. calculate the next location (x,y)> absolute angle
-	# 2. calculate the relative rotation required from the current rotation
-	# 3. calculate the relative speed of the two motors needed to finish at the same moment, accounting for accelleration.
-	# 4. loop through the steps.
-}
 
 # ----------------------------------------------------------------------
 # HELPER FUNCTIONS FOR THE STEPPER PACKAGE - NOT PART OF OBJECTS

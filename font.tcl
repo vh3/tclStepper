@@ -121,21 +121,16 @@ proc step {rot steps_per_rot step_var} {
 	}
 }
 
+}; # END OF NAMESPACE DEFINITION
 
 
-
-
-
-
-}
-# -------------------------------------------
-# END OF NAMESPACE DEFINITION
+return 
 
 # Test data
 set x      209.99   ; # Cartesion coordinate of the destination point
 set y      0.0   ; # Cartesian coordinate of the destination point
 set offset 210.0 ; # The horizontal distance from the origin point (0,0) to the spindle mount of the arm, mm
-set Y      465.0 ; # The vertical distance from the origina point(0,0) to the spindle mount of the arm, mm
+set Y      465.0 ; # The vertical distance from the origin point(0,0) to the spindle mount of the arm, mm
 set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
 # set result [::tclStepper::angle $x $y $offset $Y $L]
 # puts "Result is:$result"

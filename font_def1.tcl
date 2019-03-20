@@ -1,12 +1,8 @@
-# Font source: 	https://www.min.at/prinz/o/software/pixelfont/
-# An 8x8 pixel ascii font definition file in Tcl list format
-# Modified from fonts from:
-# https://www.min.at/prinz/o/software/pixelfont/
-# character data is organized by columns of pixels,
-# intended for a horizontal scolling display
-# line coordinates extracted by viewing the hex with the viewer
+# font_def1.tcl
+# Hand-crafted font definition for a line-drawing robot.
+# line coordinates extracted by viewing 8X8 character patterns with the the viewer
 # tool at: https://gurgleapps.com/tools/matrix
-
+# character definitions are lists of 3-element groups with <penup=0, pendown=1> <destination x> <destination y> on an 8X8 grid.
 set font_data [list \
 { } {} \
 0 { 0 3 3 1 3 6 1 4 7 1 5 7 1 6 6 1 6 3 1 5 2 1 4 2 1 3 3 1 6 6} \
