@@ -6,6 +6,8 @@
 # --------------------------------------------------------------------------------------------------
 
 package require Tcl 8.6
+package require Thread; # Info about how threads work in Tcl can be found here: http://www.beedub.com/book/4th/Threads.pdf
+
 package provide tclStepper 0.1.0
 
 source gpio.tcl
@@ -71,7 +73,7 @@ namespace eval ::tclStepper {
 					# if {$dir == "CW"} {incr StepState} else {incr StepState -1}
 					my onestep $dir
 					
-					::tclStepper::delay-bw $StepTiming
+					::tclStepper::delay-ev $StepTiming
 
 					# figure out which signal to do next (from where we are)
 
@@ -137,9 +139,12 @@ namespace eval ::tclStepper {
 
 			# Add motor configurations as we test new motors.  TODO: move this out to a configuration file that can be edited by users outside the package
 			# Todo: add the means to configure multiple step methods for a moto180
-			set motor_config(28BJY-48)      [list CoilCount 4 StepTiming 10 AngleStart 0 StepPerRotation 513  StepSignals {1000 0100 0010 0001} StepState 0 Reference "https://42bots.com/tutorials/28byj-48-stepper-motor-with-uln2003-driver-and-arduino-uno/"]
-			set motor_config(28BJY-48_half) [list CoilCount 4 StepTiming 10 AngleStart 0 StepPerRotation 1026 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
-			set motor_config(28BJY-48A)     [list CoilCount 4 StepTiming 10 AngleStart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0001} StepState 0]
+			set motor_config(28BJY-48)      [list CoilCount 4 StepTiming 5 AngleStart 0 StepPerRotation 513  StepSignals {1000 0100 0010 0001} StepState 0 Reference "https://42bots.com/tutorials/28byj-48-stepper-motor-with-uln2003-driver-and-arduino-uno/"]
+			set motor_config(28BJY-48_half) [list CoilCount 4 StepTiming 5 AngleStart 0 StepPerRotation 1026 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
+			set motor_config(28BJY-48A)     [list CoilCount 4 StepTiming 5 AngleStart 0 StepPerRotation 4076 StepSignals {1000 0100 0010 0001} StepState 0]
+
+			# Info needed to configure threaded
+
 
 			set GpioPins $gpio_list
 			foreach {i j} $motor_config($motor_type) {set $i $j}

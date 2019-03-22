@@ -48,9 +48,8 @@ if {$angular_example} {
 	set Y      465.0 ; # The vertical distance from the origina point(0,0) to the spindle mount of the arm, mm
 	set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
 	set result [::tclStepper::angle $x $y $offset $Y $L]
-	puts "(x,y)($x,$y) >> (angle1,angle2)([lindex $result 0],[lindex $result 1])"
-	
-}	
+	puts "(x,y)($x,$y) >> (angle1,angle2)([lindex $result 0],[lindex $result 1])"	
+}
 
 if {$motor_example} {
 	# ----------------------------------------------------------------------
@@ -98,12 +97,11 @@ if {$gpio_example} {
 	foreach i $port_list { 
 		::tclGPIO::write_port $i 0
 		::tclStepper::delay 1000
-	}	
+	}
 
 	# Close the ports
 	foreach i $port_list {tclGPIO::close_port $i}
 }
-
 
 if {$text_example} {
 
@@ -118,10 +116,10 @@ if {$text_example} {
 	set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
 
 	# Simple angular test
-	set x      200.0
+	set x      51.0
 	set y      50.0
 	set result [::tclStepper::angle $x $y $offset $Y $L]
-	puts "Tes1t result is:$result"
+	puts "Test result is:$result"
 
 	# Load the font data
 	::font::load_font "font_data"; # Load a file of font definitions from a file called font_def1.tcl into variable font_data
@@ -134,12 +132,12 @@ if {$text_example} {
 	# create a list of <pen> <x> <y> data for the given text
 	set text_xy [::font::geometry $text font_data $insertion_pt $size]
 	puts "text_xy=$text_xy"
-	
+
 	set text_rot [::font::xy2rot $text_xy $offset $Y $L]
 	puts "text_rot=$text_rot"
 	
 	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48_half"]	
-	# set motor2 [::tclStepper::Motor new [list x x x x] "28BJY-48_half"]
+	set motor2 [::tclStepper::Motor new [list 21 19 27 13] "28BJY-48_half"]
 
 	# cycle through each of the rotation angles
 	set counter 0
@@ -150,18 +148,15 @@ if {$text_example} {
 		
 		if {$i==1} {#pen down} else {#pen up}
 
-		# Rotate motor #1 (TODO: add threading)
+		# Rotate motor #2 (TODO: add threading)
 		$motor1 rotateto $angle1
-		
-		::tclStepper::delay 500
+		$motor2 rotateto $angle2
 
-		# Rotate motor #2
-		# $motor2 rotateto $angle2		
 	}
 	
 	#pen up
 
 	$motor1 destroy
-	# $motor2 destroy
+	$motor2 destroy
 
 }
