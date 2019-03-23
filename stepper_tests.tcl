@@ -1,19 +1,18 @@
 # stepper_tests.tcl
 # A collection of development tests for the stepper scripts.
 # Intended for use on a raspberry pi
+# This package can be cloned to your rPI with "git clone https://github.com/vh3/tclStepper.git"
 #  3 Mar 2019, vh, first version
 # 16 Mar 2019, vh, added scripts for Motor object, delay
 
-set delay_example false
+set delay_example   false
 set angular_example false
-set motor_example false
-set gpio_example   false
-set text_example true
+set motor_example   false
+set gpio_example    false
+set text_example    true
 
-# Add the current folder to the current auto_path so that we can load this package
-# we assume that this package was retrieved with the command "git clone https://github.com/vh3/tclStepper.git"
+# Add the current folder to the current auto_path so that we can load local packages
 set auto_path [append auto_path " [pwd]"]
-# puts $auto_path
 
 package require tclStepper
 
@@ -54,16 +53,21 @@ if {$angular_example} {
 if {$motor_example} {
 	# ----------------------------------------------------------------------
 	# set up a simple stepper motor and rotate a fixed number of steps
-	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48_half"]
+	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48A"]
 	puts "motor1=$motor1"
-	$motor1 step 100
-	$motor1 step -40
-	$motor1 step 50
-	$motor1 rotate 180
-	$motor1 rotate -180
-	$motor1 rotateto 0
-	$motor1 rotateto 90	
-	$motor1 rotateto 0
+
+	$motor1 rotateto 720
+	$motor1 rotate -90
+	$motor1 rotate 90
+
+#	$motor1 step 100
+#	$motor1 step -40
+#	$motor1 step 50
+#	$motor1 rotate 180
+#	$motor1 rotate -180
+#	$motor1 rotateto 0
+#	$motor1 rotateto 90	
+#	$motor1 rotateto 0
 	$motor1 destroy
 }
 
@@ -74,8 +78,6 @@ if {$gpio_example} {
 	puts "Writing to gpio pins"
 	
 	set port_list [list 18 23 17 22]
-	# source gpio.tcl
-	# package require tclGPIO
 	
 	# open the ports and set them as output
 	foreach i $port_list {
@@ -105,10 +107,17 @@ if {$gpio_example} {
 
 if {$text_example} {
 
-	source font.tcl
+	# A test of the 2-motor movement needed for the 2D robot arm at https://www.instructables.com/id/CNC-Drawing-Arm/
+		
+	# We will need the font definitions for this example.
 	package require font
 
-	# Load a font definition and draw some numbers.  Start with one motor
+	# Load a font definition and draw some numbers.
+	::font::load_font "font_data"; # Load a file of font definitions from a file called font_def1.tcl into variable font_data
+	# Create some test text
+	set insertion_pt [list 100.0 100.0]
+	set size 10.0
+	set text "88"
 
 	# Robot arm setup geometry
 	set offset 210.0 ; # The horizontal distance from the origin point (0,0) to the spindle mount of the arm, mm
@@ -120,14 +129,6 @@ if {$text_example} {
 	set y      50.0
 	set result [::tclStepper::angle $x $y $offset $Y $L]
 	puts "Test result is:$result"
-
-	# Load the font data
-	::font::load_font "font_data"; # Load a file of font definitions from a file called font_def1.tcl into variable font_data
-	
-	# Create some test text
-	set insertion_pt [list 100.0 100.0]
-	set size 10.0
-	set text "10:00 @"
 	
 	# create a list of <pen> <x> <y> data for the given text
 	set text_xy [::font::geometry $text font_data $insertion_pt $size]
@@ -136,8 +137,11 @@ if {$text_example} {
 	set text_rot [::font::xy2rot $text_xy $offset $Y $L]
 	puts "text_rot=$text_rot"
 	
-	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48_half"]	
-	set motor2 [::tclStepper::Motor new [list 21 19 27 13] "28BJY-48_half"]
+	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48A_half"]	
+	set motor2 [::tclStepper::Motor new [list 21 19 27 13] "28BJY-48A_half"]
+
+	# Initialize multimotor coordination object
+	set multimotor [::tclStepper::Multimotor new [list $motor1 $motor2]]
 
 	# cycle through each of the rotation angles
 	set counter 0
@@ -148,15 +152,12 @@ if {$text_example} {
 		
 		if {$i==1} {#pen down} else {#pen up}
 
-		# Rotate motor #2 (TODO: add threading)
-		$motor1 rotateto $angle1
-		$motor2 rotateto $angle2
-
+		$multimotor rotateto "$angle1 $angle2"
 	}
 	
-	#pen up
+	# Rotate the motors back to zero before quitting.
+	$multimotor rotateto {0 0}	
 
 	$motor1 destroy
 	$motor2 destroy
-
 }

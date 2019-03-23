@@ -8,4 +8,6 @@
 # script is sourced, the variable $dir must contain the
 # full path name of this file's directory.
 
+package ifneeded font 0.1.0 [list source [file join $dir font.tcl]]
+package ifneeded tclGPIO 0.1 [list source [file join $dir gpio.tcl]]
 package ifneeded tclStepper 0.1.0 [list source [file join $dir tclStepper.tcl]]
