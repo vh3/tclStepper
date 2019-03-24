@@ -19,7 +19,7 @@ package require tclStepper
 if {$delay_example} {
 	# ----------------------------------------------------------------------
 	# Test out the time-delay procedures with a delay of 1ms
-	
+
 	set delay_time 1
 	Simple after+vwait. Calculate average time for 1000 attempts
 	set time0 [time {::tclStepper::delay $delay_time} 1000]
@@ -47,7 +47,7 @@ if {$angular_example} {
 	set Y      465.0 ; # The vertical distance from the origina point(0,0) to the spindle mount of the arm, mm
 	set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
 	set result [::tclStepper::angle $x $y $offset $Y $L]
-	puts "(x,y)($x,$y) >> (angle1,angle2)([lindex $result 0],[lindex $result 1])"	
+	puts "(x,y)($x,$y) >> (angle1,angle2)([lindex $result 0],[lindex $result 1])"
 }
 
 if {$motor_example} {
@@ -66,7 +66,7 @@ if {$motor_example} {
 #	$motor1 rotate 180
 #	$motor1 rotate -180
 #	$motor1 rotateto 0
-#	$motor1 rotateto 90	
+#	$motor1 rotateto 90
 #	$motor1 rotateto 0
 	$motor1 destroy
 }
@@ -76,12 +76,12 @@ if {$gpio_example} {
 
 	# Try out the GPIO functions
 	puts "Writing to gpio pins"
-	
+
 	set port_list [list 18 23 17 22]
-	
+
 	# open the ports and set them as output
 	foreach i $port_list {
-	
+
 		catch {::tclGPIO::open_port $i "out"} err
 		puts "port $i opened for writing"
 		# set the port value to zero, initially
@@ -89,14 +89,14 @@ if {$gpio_example} {
 		puts "port $i iniital value set to zero"
 	}
 	puts "ports opened for writing"
-	
+
 	# Turn them on
-	foreach i $port_list {	
+	foreach i $port_list {
 		::tclGPIO::write_port $i 1
 		::tclStepper::delay 1000
-	}	
+	}
 	#	 turn them off
-	foreach i $port_list { 
+	foreach i $port_list {
 		::tclGPIO::write_port $i 0
 		::tclStepper::delay 1000
 	}
@@ -108,7 +108,7 @@ if {$gpio_example} {
 if {$text_example} {
 
 	# A test of the 2-motor movement needed for the 2D robot arm at https://www.instructables.com/id/CNC-Drawing-Arm/
-		
+
 	# We will need the font definitions for this example.
 	package require font
 
@@ -116,8 +116,8 @@ if {$text_example} {
 	::font::load_font "font_data"; # Load a file of font definitions from a file called font_def1.tcl into variable font_data
 	# Create some test text
 	set insertion_pt [list 100.0 100.0]
-	set size 10.0
-	set text "88"
+	set size 20.0
+	set text "10:08 @"
 
 	# Robot arm setup geometry
 	set offset 210.0 ; # The horizontal distance from the origin point (0,0) to the spindle mount of the arm, mm
@@ -129,15 +129,15 @@ if {$text_example} {
 	set y      50.0
 	set result [::tclStepper::angle $x $y $offset $Y $L]
 	puts "Test result is:$result"
-	
+
 	# create a list of <pen> <x> <y> data for the given text
 	set text_xy [::font::geometry $text font_data $insertion_pt $size]
 	puts "text_xy=$text_xy"
 
 	set text_rot [::font::xy2rot $text_xy $offset $Y $L]
 	puts "text_rot=$text_rot"
-	
-	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48A_half"]	
+
+	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48A_half"]
 	set motor2 [::tclStepper::Motor new [list 21 19 27 13] "28BJY-48A_half"]
 
 	# Initialize multimotor coordination object
@@ -149,14 +149,25 @@ if {$text_example} {
 		incr counter
 
 		puts "(LINE$counter):pen=$i, angle1=$angle1, angle2=$angle2"
-		
-		if {$i==1} {#pen down} else {#pen up}
+
+		if {$i==1} {
+
+			#pen down
+			# Delay when we start pen-down line segment
+			delay 100
+
+		} else {
+
+			#pen up
+			# pause when we lift the pen off the paper
+			delay 500
+		}
 
 		$multimotor rotateto "$angle1 $angle2"
 	}
-	
+
 	# Rotate the motors back to zero before quitting.
-	$multimotor rotateto {0 0}	
+	$multimotor rotateto {0 0}
 
 	$motor1 destroy
 	$motor2 destroy

@@ -16,30 +16,50 @@ proc load_font {font_varname} {
 	return 1
 }
 
+# A procedure to convert input text to a list of (pen,x,y) drawing actions
 proc geometry {text font_var insertion_pt size} {
 
 	upvar $font_var font_def
 	# puts $font_def
 
-	puts "Mapping text to font 'glyphs': '$text'"	
-	set result [string map $font_def $text]
-	puts "   input text has [expr [llength $result] / 3] points"
-	# puts "result = $result"
+	puts "Mapping text to font 'glyphs': '$text'"
+
+	# cycle through each individual character and map the character to the font
+	set result ""
+	for {set char_counter 0} {$char_counter <[string length $text]} {incr char_counter} {
+
+		set character [string index $text $char_counter]
+		puts "working on character: $character"
+
+		# Add it to the list
+		set result [lappend result [string map $font_def $character]]
+	}
+
+	puts "   input text has [llength $result] character definitions"
+	puts "    result = $result"
 
 	#puts "Converting glyphs to absolute coordinates"
 	set geometry_list ""
 	set counter 0
 
-	foreach {i j k} $result {
-	
-		append geometry_list " " $i " " [expr [lindex $insertion_pt 0] + $size * $counter + $j / 8.0 * $size] " " [expr [lindex $insertion_pt 1] + $k / 8.0 * $size ]
+	# iterate over each character
+	foreach i $result {
+
+		# iterate over each stroke that makes up the character
+		foreach {pen x y} $i {
+
+			append geometry_list " " $pen " " [expr [lindex $insertion_pt 0] + $size * $counter + $x / 8.0 * $size] " " [expr [lindex $insertion_pt 1] + $y / 8.0 * $size ]
+		}
+
+		# increase the x-offset for the next character
 		incr counter
 	}
+	
 	# puts "geometry_list = $geometry_list"
 	puts "   text_xy has [expr [llength $geometry_list] / 3] points" 
-	return $geometry_list
-	# 
-}
+	return $geometry_list 
+}; # End of procedure definion: geometry
+
 
 proc angle {x y offset Y L} {
 
