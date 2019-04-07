@@ -111,6 +111,24 @@ proc xy2rot {text_xy offset Y L} {
 	return $text_angles
 }
 
+# Convert font definition from xy to rotation basis
+proc xy2rot2 {text_xy offset1 offset2 y_axis length} {
+
+	# The input text is a list of triples (pen_down_flag x y)
+
+	set text_angles ""
+
+	foreach {i j k} $text_xy {
+
+		set rot [angle2 $j $k $offset1 $offset2 $y_axis $length]
+		# puts "rot=$rot"
+		append text_angles " $i $rot"
+	}
+
+	puts "   text_rot has [expr [llength $text_angles]/3] points."	
+	return $text_angles
+}
+
 
 # 
 proc step {rot steps_per_rot step_var} {

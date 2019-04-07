@@ -9,7 +9,8 @@ set delay_example   false
 set angular_example false
 set motor_example   false
 set gpio_example    false
-set text_example    true
+set robot1 		    false
+set robot2    		true
 
 # Add the current folder to the current auto_path so that we can load local packages
 set auto_path [append auto_path " [pwd]"]
@@ -46,7 +47,7 @@ if {$angular_example} {
 	set offset 210.0 ; # The horizontal distance from the origin point (0,0) to the spindle mount of the arm, mm
 	set Y      465.0 ; # The vertical distance from the origina point(0,0) to the spindle mount of the arm, mm
 	set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
-	set result [::tclStepper::angle $x $y $offset $Y $L]
+	set result [::tclStepper::angle1 $x $y $offset $Y $L]
 	puts "(x,y)($x,$y) >> (angle1,angle2)([lindex $result 0],[lindex $result 1])"
 }
 
@@ -105,9 +106,84 @@ if {$gpio_example} {
 	foreach i $port_list {tclGPIO::close_port $i}
 }
 
-if {$text_example} {
+if {$robot2} {
 
-	# A test of the 2-motor movement needed for the 2D robot arm at https://www.instructables.com/id/CNC-Drawing-Arm/
+	# two-arm 2d drawing robot
+	# A test of the 2-motor movement needed for the 2D robot arm shown at https://www.instructables.com/id/CNC-Dual-Arm-Plotter-Version-2/
+
+	# We will need the font definitions for this example.
+	package require font
+
+	# Load a font definition and draw some numbers.
+	::font::load_font "font_data"; # Load a file of font definitions from a file called font_def1.tcl into variable font_data
+	# Create some test text
+	set insertion_pt [list 100.0 100.0]
+	set size 20.0
+	set text "10:08 @"
+
+	# Robot arm setup geometry
+	set offset1     125       ;# offset of motor 1 from x=0
+	set offset2     180       ;# offset of motor 2 from x=0
+	set y_axis      465       ;# offset of motors from y=0
+	set length      255       ;# length of the arm segments
+	set scale_factor  1
+	set arc_max       2       ;# minimum arc-length (TODO: implement finite arc-lengths)
+	set steps_per_deg [expr  4032.0 / 360.0]
+
+	# Simple angular test
+	set x      51.0
+	set y      50.0
+	set result [::tclStepper::angle2 $x $y $offset1 $offset2 $y_axis $length]
+	puts "Test result is:$result"
+
+	# create a list of <pen> <x> <y> data for the given text
+	set text_xy [::font::geometry $text font_data $insertion_pt $size]
+	puts "text_xy=$text_xy"
+
+	set text_rot [::font::xy2rot2 $text_xy $offset $Y $L]
+
+	puts "text_rot=$text_rot"
+
+	set motor1 [::tclStepper::Motor new [list 18 23 17 22] "28BJY-48A_half"]
+	set motor2 [::tclStepper::Motor new [list 21 19 27 13] "28BJY-48A_half"]
+
+	# Initialize multimotor coordination object
+	set multimotor [::tclStepper::Multimotor new [list $motor1 $motor2]]
+
+	# cycle through each of the rotation angles
+	set counter 0
+	foreach {i angle1 angle2} $text_rot {
+		incr counter
+
+		puts "(LINE$counter):pen=$i, angle1=$angle1, angle2=$angle2"
+
+		if {$i==1} {
+
+			#pen down
+			# Delay when we start pen-down line segment
+			delay 100
+
+		} else {
+
+			#pen up
+			# pause when we lift the pen off the paper
+			delay 500
+		}
+
+		$multimotor rotateto "$angle1 $angle2"
+	}
+
+	# Rotate the motors back to zero before quitting.
+	$multimotor rotateto {0 0}
+
+	$motor1 destroy
+	$motor2 destroy
+}
+
+if {$robot1} {
+
+	# one-arm 2d drawing robot
+	# A test of the 2-motor movement needed for the 2D robot arm shown at https://www.instructables.com/id/CNC-Drawing-Arm/
 
 	# We will need the font definitions for this example.
 	package require font
@@ -127,7 +203,7 @@ if {$text_example} {
 	# Simple angular test
 	set x      51.0
 	set y      50.0
-	set result [::tclStepper::angle $x $y $offset $Y $L]
+	set result [::tclStepper::angle1 $x $y $offset $Y $L]
 	puts "Test result is:$result"
 
 	# create a list of <pen> <x> <y> data for the given text
@@ -172,3 +248,4 @@ if {$text_example} {
 	$motor1 destroy
 	$motor2 destroy
 }
+

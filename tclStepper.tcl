@@ -48,6 +48,8 @@ namespace eval ::tclStepper {
 			set motor_config(28BJY-48_half)  [list CoilCount 4 StepTiming 5 AngleStart 0 StepPerRotation 1026 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
 			set motor_config(28BJY-48A)      [list CoilCount 4 StepTiming 1 AngleStart 0 StepPerRotation 2038 StepSignals {1000 0100 0010 0001} StepState 0]
 			set motor_config(28BJY-48A_half) [list CoilCount 4 StepTiming 1 AngleStart 0 StepPerRotation 4076 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
+			set motor_config(28BJY-48A_Robot2_1) [list CoilCount 4 StepTiming 1 AngleStart 250 StepPerRotation 4076 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
+			set motor_config(28BJY-48A_Robot2_2) [list CoilCount 4 StepTiming 1 AngleStart 215 StepPerRotation 4076 StepSignals {1000 1100 0100 0110 0010 0011 0001 1001} StepState 0]
 
 			# initialize the configuration parameters passed in the config statement
 			# TODO: implement a formal config statement so users can set and reconfigure all or some parameters.
@@ -64,6 +66,13 @@ namespace eval ::tclStepper {
 				if {[catch {::tclGPIO::write_port $i 0} err]} {puts $err}
 			}
 
+			# if the StartAngle is not zero, set the StepState to an appropriate value
+			if {$AngleStart != 0} {
+
+				set StepState [expr round($AngleStart * $StepPerRotation / 360.0)]
+				puts "AngleStart was not zero:  StepState is now: $StepState"
+			}
+
 			# Attempt one step forward, then back.
 			my step 1
 			my step -1
@@ -74,7 +83,7 @@ namespace eval ::tclStepper {
 			puts "Destroying motor object"
 
 			# Return the motor to it's starting position.
-			my rotateto $AngleStart
+			# my rotateto $AngleStart
 
 			# Set the values of the pins to zero, and close the ports to these pins
 			puts " Releasing motor pins: $GpioPins"
@@ -187,10 +196,15 @@ namespace eval ::tclStepper {
 		method showcurrentangle {} {
 
 			# This calculation will never be exactly correct if the StepPerRotation is not actually an integer.  Close enough for the moment
-			return [expr 360.0 * ($StepState % round($StepPerRotation)) / $StepPerRotation + $AngleStart]
+			return [expr 360.0 * ($StepState % round($StepPerRotation)) / $StepPerRotation]
 
 		}; # End of method ShowCurrentAngle
 
+		method showstartangle {} {
+	
+			return $AngleStart
+		}
+	
 		method gettiming {} {return $StepTiming}		
 		method settiming {new_value} {set StepTiming $new_Value; return}
 
@@ -248,7 +262,7 @@ namespace eval ::tclStepper {
 				set current_angle($motor_count) [[lindex $MotorHandleList $motor_count] showcurrentangle]
 				set rot_angle($motor_count) [expr $i - $current_angle($motor_count)]
 				set step_count($motor_count) [expr round($rot_angle($motor_count) / 360.0 * $step_per_rot)]
-				puts "for motor $motor_count (handle=$motor_handle($motor_count)), current_angre=$current_angle($motor_count).  Need to rotate $rot_angle($motor_count) to get to $target_angle($motor_count) = $step_count($motor_count) steps"
+				puts "for motor $motor_count (handle=$motor_handle($motor_count)), current_angle=$current_angle($motor_count).  Need to rotate $rot_angle($motor_count) to get to $target_angle($motor_count) = $step_count($motor_count) steps"
 
 				# keep track of the longest rotation
 				if {[expr abs($rot_angle($motor_count))] >= $long_rotation} {
@@ -316,7 +330,7 @@ namespace eval ::tclStepper {
 
 }; # end of namespace definition:  tclStepper
 
-# ::tclStepper::angle
+# ::tclStepper::angle1
 # A helper function for a specific 2D drawing arm robot.  Move this to a separate implementation script for a specific robot later
 # calculations after https://www.instructables.com/id/CNC-Drawing-Arm/
 # see diagrams at: https://cdn.instructables.com/F47/IOSI/J5K6TR3R/F47IOSIJ5K6TR3R.LARGE.jpg
@@ -334,7 +348,7 @@ namespace eval ::tclStepper {
 # set L      300.0  ; # the length of the plotting arm(s).  The plotting arm linkages are all of equal length.
 # set result [::tclStepper::angle $x $y $offset $Y $L]
 # puts "Result is:$result"
-proc ::tclStepper::angle {x y offset Y L} {
+proc ::tclStepper::angle1 {x y offset Y L} {
 
 	set pi [expr acos(-1.0)]
 	set rad2deg [expr 180 / $pi]
@@ -373,6 +387,42 @@ proc ::tclStepper::angle {x y offset Y L} {
 	# Convert to degrees and return
 	return [list [expr $angle1 * $rad2deg ] [expr $angle2 * $rad2deg]]
 }
+
+
+proc ::tclStepper::angle2 {x y offset1 offset2 y_axis length} {
+
+	# return angles (clockwise from vertical) for a 2-arm plotting arm
+	# after https://www.instructables.com/id/CNC-Dual-Arm-Plotter/ 
+	# and https://cdn.instructables.com/ORIG/FV9/MFQ9/J5UA3DYI/FV9MFQ9J5UA3DYI.ino
+
+	set pi [expr acos(-1.0)]
+	set rad2deg [expr 180.0 / $pi]
+
+	set distance1 [expr sqrt(($offset1 - $x) * ($offset1 - $x) + ($y_axis - $y) * ($y_axis - $y) )]
+	set distance2 [expr sqrt(($offset2 - $x) * ($offset2 - $x) + ($y_axis - $y) * ($y_axis - $y) )]
+
+	if {$x > $offset1} {
+	
+		set angle1 [expr $pi + acos($distance1 / (2 * $length)) - atan(($x - $offset1) / ($y_axis - $y))] ;# radians	
+
+	} else {
+
+		set angle1 [expr $pi + acos($distance1 / (2 * $length)) + atan(($offset1 - $x) / ($y_axis - $y))]; # radians
+	}
+
+	if {$x > $offset2} {
+	
+		set angle2 [expr $pi - acos($distance2 / (2 * $length)) - atan(($x - $offset2) / ($y_axis  - $y))]; # radians
+
+	} else {
+	
+		set angle2 [expr $pi - acos($distance2 / (2 * $length)) + atan(($offset2 - $x) / ($y_axis - $y))]; # radians
+	}
+
+	# Convert angles to degrees and return
+	return [list [expr $rad2deg * $angle1] [expr $rad2deg * $angle2]]
+};  #end of proc angle2
+
 
 # --------------------------------------------------------------------
 # USEFUL INFO FROM THE ARDUINO VERSION
